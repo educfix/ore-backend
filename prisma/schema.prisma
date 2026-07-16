@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// USER — the Ore account owner (also gets a
+// permanent @username identity, per the vision doc)
+// ─────────────────────────────────────────────
+model User {
+  id            String    @id @default(uuid())
+  phone         String?   @unique
+  email         String?   @unique
+  username      String    @unique
+  passwordHash  String
+  displayName   String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  contacts      Contact[]
+  tags          Tag[]
+  reminders     Reminder[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// CONTACT — a "smart contact" owned by a user.
+// This is the core object in Phase 1.
+// ─────────────────────────────────────────────
+model Contact {
+  id                String    @id @default(uuid())
+  ownerId           String
+  owner             User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name              String
+  phoneNumbers      String[]  // supports multiple numbers per contact
+  emails            String[]
+  avatarUrl         String?
+
+  howWeMet          String?
+  relationshipType  String?   // e.g. "customer", "supplier", "friend", "business"
+  businessVerified  Boolean   @default(false)
+
+  source            String    @default("manual") // "manual" | "phone_sync" | "qr_share"
+  dateAdded         DateTime  @default(now())
+
+  // Deduplication support — normalized phone used to detect duplicates
+  normalizedPhone   String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tags              ContactTag[]
+  timelineEvents    TimelineEvent[]
+  reminders         Reminder[]
+
+  @@index([ownerId])
+  @@index([normalizedPhone])
+  @@map("contacts")
+}
+
+// ─────────────────────────────────────────────
+// TAG — smart tags for categorizing contacts
+// ─────────────────────────────────────────────
+model Tag {
+  id        String   @id @default(uuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#6C5CE7")
+  createdAt DateTime @default(now())
+
+  contacts  ContactTag[]
+
+  @@unique([ownerId, name])
+  @@map("tags")
+}
+
+model ContactTag {
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+// ─────────────────────────────────────────────
+// TIMELINE EVENT — the relationship history/notes
+// that generic contact apps can't store
+// ─────────────────────────────────────────────
+model TimelineEvent {
+  id        String   @id @default(uuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type      String   // "note" | "call" | "message" | "payment" | "meeting" | "introduction"
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([contactId])
+  @@map("timeline_events")
+}
+
+// ─────────────────────────────────────────────
+// REMINDER — follow-up reminders tied to a contact
+// ─────────────────────────────────────────────
+model Reminder {
+  id        String   @id @default(uuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  message   String
+  dueAt     DateTime
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, dueAt])
+  @@map("reminders")
+}
